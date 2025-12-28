@@ -24,7 +24,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install -r requirements-dev.txt
-          pip install types-requests
+          pip install types-requests mypy pytest-asyncio
+
 
       - name: Run pre-commit checks (black, flake8, mypy, pytest)
         run: |
