@@ -1,4 +1,9 @@
-import asyncio, logging, schedule, time, os
+import asyncio
+import logging
+import os
+import schedule
+import sys
+import time
 from utils import setup_logging, load_config
 from ozon_api import get_stocks, get_recommendations
 from logic import prepare_report
@@ -34,6 +39,11 @@ def main():
     while True:
         schedule.run_pending()
         time.sleep(60)
+
+
+if "--run-now" in sys.argv:
+    asyncio.run(async_job())
+    sys.exit(0)
 
 
 if __name__ == "__main__":
