@@ -1,32 +1,32 @@
+# src/utils.py
 import os
+import json
 import logging
-from logging.handlers import RotatingFileHandler
-from dotenv import load_dotenv
 
 
-def setup_logging():
-    log_dir = "logs"
-    os.makedirs(log_dir, exist_ok=True)
-    handler = RotatingFileHandler(
-        f"{log_dir}/app.log", maxBytes=5_000_000, backupCount=3
-    )
-    logging.basicConfig(
-        level=os.getenv("LOG_LEVEL", "INFO"),
-        format="%(asctime)s [%(levelname)s] %(message)s",
-        handlers=[handler, logging.StreamHandler()],
-    )
+def load_config(path: str | None = None) -> dict:
+    """Загружает конфиг из JSON-файла (по умолчанию config.json)."""
+    try:
+        file_path: str = (
+            path or os.getenv("CONFIG_PATH", "config.json") or "config.json"
+        )
+        if not os.path.exists(file_path):
+            logging.warning(f"Config file not found: {file_path}")
+            return {}
+        with open(file_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        logging.error(f"Error loading config: {e}")
+        return {}
 
 
-def load_config():
-    load_dotenv()
-    required_vars = [
-        "OZON_API_KEY",
-        "OZON_CLIENT_ID",
-        "TELEGRAM_TOKEN",
-        "TELEGRAM_CHAT_ID",
-        "GOOGLE_SA_PATH",
-        "GOOGLE_SHEET_NAME",
-    ]
-    missing = [v for v in required_vars if not os.getenv(v)]
-    if missing:
-        raise ValueError(f"❌ Missing environment variables: {missing}")
+def setup_logging() -> logging.Logger:
+    """Настраивает логирование и возвращает logger."""
+    logger = logging.getLogger("ozon_fbo_advisor")
+    if not logger.handlers:
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(asctime)s [%(levelname)s] %(message)s",
+            handlers=[logging.StreamHandler()],
+        )
+    return logger
