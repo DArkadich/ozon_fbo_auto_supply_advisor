@@ -2,46 +2,55 @@ name: 🚀 Deploy Ozon FBO Auto Supply Advisor to Production
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
 
 jobs:
   deploy:
-    name: 🔧 Build & Deploy to Production
+    name: 🔧 Build, Test & Deploy
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Проверка репозитория
+      # 1️⃣ Проверяем репозиторий
       - name: 🧩 Checkout repository
         uses: actions/checkout@v4
 
-      # 2️⃣ Проверка секретов перед деплоем
-      - name: 🔍 Validate deployment secrets
+      # 2️⃣ Проверяем наличие секретов
+      - name: 🔍 Validate secrets
         run: |
           if [ -z "${{ secrets.SERVER_HOST }}" ] || [ -z "${{ secrets.SERVER_USER }}" ] || [ -z "${{ secrets.SERVER_SSH_KEY }}" ]; then
-            echo "❌ Missing one or more server secrets (SERVER_HOST, SERVER_USER, SERVER_SSH_KEY)"
+            echo "❌ Missing one or more secrets (SERVER_HOST, SERVER_USER, SERVER_SSH_KEY)"
             exit 1
           else
-            echo "✅ All required secrets are set"
+            echo "✅ All secrets are set"
           fi
 
-      # 3️⃣ Лог для проверки окружения
-      - name: 🧠 Debug environment info
-        run: |
-          echo "Repository: $GITHUB_REPOSITORY"
-          echo "Branch: $GITHUB_REF"
-          echo "Actor: $GITHUB_ACTOR"
+      # 3️⃣ Устанавливаем зависимости
+      - name: 🧱 Setup Python & install dependencies
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pytest pytest-asyncio mypy || true
 
-      # 4️⃣ Тестирование перед деплоем
-      - name: 🧪 Run tests and type checks
+      # 4️⃣ Проверяем, есть ли pytest-cov
+      - name: 🧪 Run tests with auto-coverage fallback
         run: |
-          pip install -r requirements.txt pytest pytest-asyncio pytest-cov mypy
-          PYTHONPATH=src pytest -q --disable-warnings --maxfail=1
+          echo "🔍 Checking for pytest-cov plugin..."
+          if python -m pip show pytest-cov > /dev/null 2>&1; then
+            echo "✅ pytest-cov found, running with coverage"
+            PYTHONPATH=src pytest -q --disable-warnings --maxfail=1 \
+              --cov=src --cov-report=term-missing --cov-fail-under=70
+          else
+            echo "⚠️ pytest-cov not installed, running basic tests"
+            PYTHONPATH=src pytest -q --disable-warnings --maxfail=1
+          fi
+          echo "🔠 Running type checks..."
           mypy src || true
 
-      # 5️⃣ Развёртывание через SSH
-      - name: 🚀 Deploy to server
+      # 5️⃣ Развёртывание на сервер
+      - name: 🚀 Deploy to production
         uses: appleboy/ssh-action@v1.1.0
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -51,42 +60,33 @@ jobs:
           script_stop: true
           script: |
             echo "🔐 Connected to $HOST"
-
-            # Папка деплоя
             APP_DIR="/home/denis/bots/ozon_fbo_auto_supply_advisor"
-
-            echo "📁 Deploying to $APP_DIR"
-
-            # Создаём папку, если нет
             mkdir -p $APP_DIR
-
             cd $APP_DIR
 
-            # Если git не инициализирован — клонируем
             if [ ! -d ".git" ]; then
-              echo "📦 Initializing repository..."
+              echo "📦 Cloning repository..."
               git clone https://github.com/DArkadich/ozon_fbo_auto_supply_advisor.git .
             fi
 
-            echo "📥 Updating code..."
+            echo "📥 Fetching latest changes..."
             git fetch --all
             git reset --hard origin/main
 
-            echo "🐳 Starting Docker containers..."
+            echo "🐳 Rebuilding containers..."
             docker compose -f docker-compose.yml pull || true
             docker compose -f docker-compose.yml up -d --build
 
-            echo "🧹 Cleaning old Docker images..."
+            echo "🧹 Cleaning unused images..."
             docker image prune -af || true
 
-            echo "✅ Deployment finished successfully!"
+            echo "✅ Deployment completed successfully!"
 
-      # 6️⃣ Уведомление об успешном деплое (опционально)
-      - name: 📣 Notify success
+      # 6️⃣ Уведомления
+      - name: ✅ Notify success
         if: success()
-        run: echo "✅ Deployment to production completed successfully!"
+        run: echo "✅ Deployed successfully to production!"
 
-      # 7️⃣ Уведомление о неудаче (опционально)
       - name: ⚠️ Notify failure
         if: failure()
-        run: echo "❌ Deployment failed. Check GitHub Actions logs."
+        run: echo "❌ Deployment failed — check logs for details."
