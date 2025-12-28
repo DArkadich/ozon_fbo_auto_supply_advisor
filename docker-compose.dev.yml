@@ -1,0 +1,20 @@
+version: "3.9"
+
+services:
+  ozon_fbo_advisor_dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ozon_fbo_advisor_dev
+    env_file:
+      - .env
+    volumes:
+      - ./src:/app/src
+      - ./tests:/app/tests
+      - ./logs:/app/logs
+    command: >
+      sh -c "pytest -q --disable-warnings --maxfail=1 || tail -f /dev/null"
+    environment:
+      - APP_MODE=dev
+      - LOG_LEVEL=DEBUG
+    restart: "no"

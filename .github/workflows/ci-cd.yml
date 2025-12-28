@@ -1,0 +1,109 @@
+name: 🧠 Ozon FBO Advisor CI/CD
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: 🧪 Unit Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio
+
+      - name: Run tests
+        run: pytest -q --disable-warnings
+ 
+      - name: Run tests with coverage threshold
+        run: |
+          pip install pytest-cov
+          pytest --cov=src --cov-report=term-missing --cov-fail-under=80
+
+      - name: Type checking
+        run: |
+          pip install mypy
+          mypy src --ignore-missing-imports
+
+    
+
+  lint:
+    name: 🧹 Code Quality (Flake8)
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install Flake8
+        run: pip install flake8
+      - name: Run Linter
+        run: flake8 src --max-line-length=100
+
+  docker:
+    name: 🐳 Build & Push Docker Image
+    runs-on: ubuntu-latest
+    needs: [test, lint]
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/ozon-fbo-advisor:latest
+
+  notify:
+    name: 🔔 Notify Telegram (optional)
+    runs-on: ubuntu-latest
+    needs: docker
+    if: always()
+
+    steps:
+      - name: Send Telegram Notification
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          MSG="✅ CI/CD pipeline completed for $GITHUB_REPOSITORY ($GITHUB_REF_NAME)"
+          curl -s -X POST https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage \
+               -d chat_id=${TELEGRAM_CHAT_ID} \
+               -d text="$MSG"
