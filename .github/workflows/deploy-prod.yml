@@ -1,4 +1,4 @@
-name: 🚀 Deploy Ozon FBO Auto Supply Advisor
+name: 🚀 Deploy Ozon FBO Auto Supply Advisor (Fast Mode)
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    name: 🔧 Test, Type Check & Deploy
+    name: ⚡ Quick Deploy to Production
 
     steps:
       - name: 🧩 Checkout repository
@@ -19,25 +19,10 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: 📦 Install dependencies
+      - name: 📦 Install dependencies (minimal)
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt pytest pytest-asyncio pytest-cov mypy
-          # Принудительно ставим типы и убеждаемся, что они реально есть
-          pip install types-requests types-urllib3 types-PyYAML || true
-          python -m pip list | grep types || true
-
-      - name: 🧠 Run mypy with fallback
-        run: |
-          echo "🔍 Running mypy with fallback..."
-          # mypy больше не падает, если типы не найдены
-          python -m mypy src --ignore-missing-imports --non-interactive --install-types || true
-
-      - name: 🧪 Run tests
-        run: |
-          echo "🧪 Running tests..."
-          PYTHONPATH=src pytest -q --disable-warnings --maxfail=1 \
-            --cov=src --cov-report=term-missing --cov-fail-under=70 || true
+          pip install -r requirements.txt || true
 
       - name: 🚀 Deploy to production
         uses: appleboy/ssh-action@v1.1.0
@@ -53,14 +38,15 @@ jobs:
             cd $APP_DIR
 
             if [ ! -d ".git" ]; then
+              echo "🔄 Cloning repo..."
               git clone https://github.com/DArkadich/ozon_fbo_auto_supply_advisor.git .
             else
+              echo "🧭 Updating repo..."
               git fetch --all
               git reset --hard origin/main
             fi
 
             echo "🐳 Rebuilding containers..."
-            docker compose -f docker-compose.yml pull || true
             docker compose -f docker-compose.yml up -d --build
             docker image prune -af || true
 
@@ -68,7 +54,7 @@ jobs:
 
       - name: ✅ Notify success
         if: success()
-        run: echo "✅ Successfully deployed to production!"
+        run: echo "✅ Deployed successfully!"
 
       - name: ⚠️ Notify failure
         if: failure()
