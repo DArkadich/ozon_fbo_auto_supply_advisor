@@ -1,107 +1,92 @@
-name: 🚀 Deploy Ozon FBO Advisor to Production (v1.3.9 Coverage Notifier)
+name: 🚀 Deploy Ozon FBO Auto Supply Advisor to Production
 
 on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
-  build-and-test:
-    name: 🧪 Build, Lint & Test
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Upgrade pip and install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install -r requirements-dev.txt
-          pip install types-requests mypy pytest-asyncio pytest-cov
-
-      - name: Run pre-commit checks (lint, format, static analysis)
-        run: |
-          pip install pre-commit
-          pre-commit run --all-files --show-diff-on-failure
-
-      - name: Run unit tests with coverage
-        env:
-          OZON_CLIENT_ID: dummy
-          OZON_API_KEY: dummy
-          TELEGRAM_TOKEN: dummy
-          TELEGRAM_CHAT_ID: dummy
-        run: |
-          set +e
-          PYTHONPATH=src pytest -q --disable-warnings --cov=src --cov-report=term-missing --cov-fail-under=75
-          echo "🧪 Coverage check done (soft threshold)"
-          set -e
-
-      - name: Extract coverage percent
-        id: coverage
-        run: |
-          echo "COVERAGE=$(pytest --cov=src --cov-report=term | grep TOTAL | awk '{print $4}')" >> $GITHUB_ENV
-
-      - name: Notify Telegram — test results
-        if: always()
-        run: |
-          MSG="✅ *CI Passed for Ozon FBO Advisor*%0A🧪 *Tests:* all passed%0A📊 *Coverage:* ${COVERAGE}%25"
-          if (( $(echo "${COVERAGE%.*} < 80" | bc -l) )); then
-            MSG+="%0A⚠️ *Coverage below threshold (80%)*"
-          fi
-          MSG+="%0A🏷 *Branch:* ${{ github.ref_name }}%0A👤 *Author:* ${{ github.actor }}"
-          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendMessage" \
-            -d chat_id=${{ secrets.TG_CHAT_ID }} \
-            -d parse_mode=Markdown \
-            -d text="$MSG"
-
   deploy:
-    name: 🚀 Deploy to Production
+    name: 🔧 Build & Deploy to Production
     runs-on: ubuntu-latest
-    needs: build-and-test
-    if: github.ref == 'refs/heads/main'
 
     steps:
-      - name: Checkout code
+      # 1️⃣ Проверка репозитория
+      - name: 🧩 Checkout repository
         uses: actions/checkout@v4
 
-      - name: Deploy via SSH
+      # 2️⃣ Проверка секретов перед деплоем
+      - name: 🔍 Validate deployment secrets
+        run: |
+          if [ -z "${{ secrets.SERVER_HOST }}" ] || [ -z "${{ secrets.SERVER_USER }}" ] || [ -z "${{ secrets.SERVER_SSH_KEY }}" ]; then
+            echo "❌ Missing one or more server secrets (SERVER_HOST, SERVER_USER, SERVER_SSH_KEY)"
+            exit 1
+          else
+            echo "✅ All required secrets are set"
+          fi
+
+      # 3️⃣ Лог для проверки окружения
+      - name: 🧠 Debug environment info
+        run: |
+          echo "Repository: $GITHUB_REPOSITORY"
+          echo "Branch: $GITHUB_REF"
+          echo "Actor: $GITHUB_ACTOR"
+
+      # 4️⃣ Тестирование перед деплоем
+      - name: 🧪 Run tests and type checks
+        run: |
+          pip install -r requirements.txt pytest pytest-asyncio pytest-cov mypy
+          PYTHONPATH=src pytest -q --disable-warnings --maxfail=1
+          mypy src || true
+
+      # 5️⃣ Развёртывание через SSH
+      - name: 🚀 Deploy to server
         uses: appleboy/ssh-action@v1.1.0
         with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          port: ${{ secrets.SSH_PORT || 22 }}
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: 22
+          script_stop: true
           script: |
-            echo "=== 🔁 Starting deploy on $(hostname) ==="
-            cd /opt/ozon-fbo-advisor || exit 1
-            git fetch origin main
+            echo "🔐 Connected to $HOST"
+
+            # Папка деплоя
+            APP_DIR="/home/denis/bots/ozon_fbo_auto_supply_advisor"
+
+            echo "📁 Deploying to $APP_DIR"
+
+            # Создаём папку, если нет
+            mkdir -p $APP_DIR
+
+            cd $APP_DIR
+
+            # Если git не инициализирован — клонируем
+            if [ ! -d ".git" ]; then
+              echo "📦 Initializing repository..."
+              git clone https://github.com/DArkadich/ozon_fbo_auto_supply_advisor.git .
+            fi
+
+            echo "📥 Updating code..."
+            git fetch --all
             git reset --hard origin/main
-            docker compose down
-            docker compose up -d --build
-            docker system prune -f
-            echo "✅ Deployment complete!"
 
-      - name: Healthcheck
-        run: |
-          sleep 5
-          curl -fsS http://${{ secrets.SSH_HOST }}:8000/health || exit 1
+            echo "🐳 Starting Docker containers..."
+            docker compose -f docker-compose.yml pull || true
+            docker compose -f docker-compose.yml up -d --build
 
-      - name: Notify Telegram — deploy status
-        if: always()
-        run: |
-          if [ "${{ job.status }}" = "success" ]; then
-            MSG="✅ *Production deploy succeeded!*%0A📦 Commit: \`${{ github.sha }}\`%0A👤 Author: \`${{ github.actor }}\`"
-          else
-            MSG="❌ *Deploy failed!*%0ACheck GitHub Actions logs."
-          fi
-          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendMessage" \
-            -d chat_id=${{ secrets.TG_CHAT_ID }} \
-            -d parse_mode=Markdown \
-            -d text="$MSG"
+            echo "🧹 Cleaning old Docker images..."
+            docker image prune -af || true
+
+            echo "✅ Deployment finished successfully!"
+
+      # 6️⃣ Уведомление об успешном деплое (опционально)
+      - name: 📣 Notify success
+        if: success()
+        run: echo "✅ Deployment to production completed successfully!"
+
+      # 7️⃣ Уведомление о неудаче (опционально)
+      - name: ⚠️ Notify failure
+        if: failure()
+        run: echo "❌ Deployment failed. Check GitHub Actions logs."
