@@ -16,5 +16,6 @@ def test_fetch_paginated_handles_empty(monkeypatch):
     monkeypatch.setenv("OZON_API_KEY", "dummy")
 
     monkeypatch.setattr("requests.Session.post", lambda *a, **k: DummyResp())
-    result = ozon_api.fetch_paginated("/v3/product/info/stocks")
+    payload = {"page_size": 100}
+    result = ozon_api.fetch_paginated("/v3/product/info/stocks", payload)
     assert result == []

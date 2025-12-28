@@ -23,5 +23,6 @@ def test_fetch_paginated(monkeypatch):
     monkeypatch.setenv("OZON_CLIENT_ID", "123")
     monkeypatch.setenv("OZON_API_KEY", "abc")
 
-    result = fetch_paginated("/v3/product/info/stocks")
+    payload = {"page_size": 100}
+    result = fetch_paginated("/v3/product/info/stocks", payload)
     assert len(result) == 1
