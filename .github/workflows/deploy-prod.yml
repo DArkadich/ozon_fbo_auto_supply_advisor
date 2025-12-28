@@ -11,41 +11,32 @@ jobs:
     name: 🔧 Test, Type Check & Deploy
 
     steps:
-      # 1️⃣ Получаем код
       - name: 🧩 Checkout repository
         uses: actions/checkout@v4
 
-      # 2️⃣ Проверяем секреты
-      - name: 🔍 Validate secrets
-        run: |
-          if [ -z "${{ secrets.SERVER_HOST }}" ] || [ -z "${{ secrets.SERVER_USER }}" ] || [ -z "${{ secrets.SERVER_SSH_KEY }}" ]; then
-            echo "❌ Missing required deployment secrets!"
-            exit 1
-          fi
-
-      # 3️⃣ Устанавливаем Python
       - name: 🧱 Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      # 4️⃣ Устанавливаем зависимости (включая types-requests)
       - name: 📦 Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt pytest pytest-asyncio pytest-cov mypy types-requests || true
+          pip install -r requirements.txt pytest pytest-asyncio pytest-cov mypy
+          # принудительная установка типов для requests
+          python -m pip install types-requests types-urllib3 types-PyYAML || true
 
-      # 5️⃣ Проверка типов и тесты
-      - name: 🧪 Run tests & mypy type checks
+      - name: 🧠 Run mypy type checks
         run: |
-          echo "🧠 Running mypy..."
-          mypy --install-types --non-interactive src || true
+          echo "Running mypy..."
+          python -m mypy --install-types --non-interactive src || true
 
-          echo "🧩 Running tests..."
+      - name: 🧪 Run tests
+        run: |
+          echo "Running pytest..."
           PYTHONPATH=src pytest -q --disable-warnings --maxfail=1 \
             --cov=src --cov-report=term-missing --cov-fail-under=70 || true
 
-      # 6️⃣ Деплой на прод
       - name: 🚀 Deploy to production
         uses: appleboy/ssh-action@v1.1.0
         with:
@@ -73,7 +64,6 @@ jobs:
 
             echo "✅ Deployment complete!"
 
-      # 7️⃣ Уведомления
       - name: ✅ Notify success
         if: success()
         run: echo "✅ Successfully deployed to production!"
