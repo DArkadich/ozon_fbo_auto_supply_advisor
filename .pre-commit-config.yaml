@@ -21,11 +21,23 @@ repos:
     rev: v1.10.1
     hooks:
       - id: mypy
+        name: mypy (type checking)
+        entry: mypy
+        language: system
+        pass_filenames: false
+        args:
+          - src  # 👈 теперь mypy всегда проверяет каталог src
+          - --ignore-missing-imports
+          - --explicit-package-bases
+          - --follow-imports=silent
+          - --show-error-codes
+
+
 
   - repo: local
     hooks:
       - id: pytest
-        name: pytest
-        entry: pytest -q
+        name: pytest (unit tests)
+        entry: bash -c "PYTHONPATH=src pytest -q --disable-warnings --maxfail=1"
         language: system
         pass_filenames: false
