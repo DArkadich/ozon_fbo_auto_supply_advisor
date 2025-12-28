@@ -32,7 +32,7 @@ jobs:
 
       - name: Run tests
         run: pytest -q --disable-warnings
- 
+
       - name: Run tests with coverage threshold
         run: |
           pip install pytest-cov
@@ -43,7 +43,7 @@ jobs:
           pip install mypy
           mypy src --ignore-missing-imports
 
-    
+
 
   lint:
     name: 🧹 Code Quality (Flake8)

@@ -2,6 +2,7 @@ import pandas as pd
 import logging
 from typing import List, Dict
 
+
 def prepare_report(stocks: List[Dict], recos: List[Dict]) -> pd.DataFrame:
     """Объединяет данные остатков и рекомендаций, фильтрует товары с низким запасом."""
     if not stocks or not recos:

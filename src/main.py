@@ -5,6 +5,7 @@ from logic import prepare_report
 from telegram_bot import send_report
 from google_sheets import upload_to_sheet
 
+
 async def async_job():
     try:
         logging.info("Starting daily Ozon FBO job...")
@@ -19,8 +20,10 @@ async def async_job():
     except Exception as e:
         logging.exception(f"Critical job error: {e}")
 
+
 def job():
     asyncio.run(async_job())
+
 
 def main():
     setup_logging()
@@ -31,6 +34,7 @@ def main():
     while True:
         schedule.run_pending()
         time.sleep(60)
+
 
 if __name__ == "__main__":
     main()

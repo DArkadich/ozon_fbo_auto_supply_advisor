@@ -1,5 +1,6 @@
 from src import main
 
+
 def test_job_runs_without_crash(monkeypatch):
     monkeypatch.setattr(main, "get_stocks", lambda: [{"product_id": 1}])
     monkeypatch.setattr(main, "get_recommendations", lambda: [{"product_id": 1}])
