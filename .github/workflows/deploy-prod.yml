@@ -1,4 +1,4 @@
-name: 🚀 Deploy Ozon FBO Auto Supply Advisor to Production
+name: 🚀 Deploy Ozon FBO Auto Supply Advisor
 
 on:
   push:
@@ -7,91 +7,77 @@ on:
 
 jobs:
   deploy:
-    name: 🔧 Build, Test & Deploy
     runs-on: ubuntu-latest
+    name: 🔧 Test, Type Check & Deploy
 
     steps:
-      # 1️⃣ Проверка репозитория
+      # 1️⃣ Получаем код
       - name: 🧩 Checkout repository
         uses: actions/checkout@v4
 
-      # 2️⃣ Проверка наличия секретов
-      - name: 🔍 Validate deployment secrets
+      # 2️⃣ Проверяем секреты
+      - name: 🔍 Validate secrets
         run: |
           if [ -z "${{ secrets.SERVER_HOST }}" ] || [ -z "${{ secrets.SERVER_USER }}" ] || [ -z "${{ secrets.SERVER_SSH_KEY }}" ]; then
-            echo "❌ Missing one or more server secrets (SERVER_HOST, SERVER_USER, SERVER_SSH_KEY)"
+            echo "❌ Missing required deployment secrets!"
             exit 1
-          else
-            echo "✅ All secrets are set"
           fi
 
-      # 3️⃣ Установка Python и зависимостей
+      # 3️⃣ Устанавливаем Python
       - name: 🧱 Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
+      # 4️⃣ Устанавливаем зависимости (включая types-requests)
       - name: 📦 Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt pytest pytest-asyncio pytest-cov mypy types-requests || true
 
-      # 4️⃣ Запуск тестов и типизации (устойчивый к сбоям)
-      - name: 🧪 Run tests and type checks
+      # 5️⃣ Проверка типов и тесты
+      - name: 🧪 Run tests & mypy type checks
         run: |
-          echo "🔍 Checking for pytest-cov..."
-          if python -m pip show pytest-cov > /dev/null 2>&1; then
-            echo "✅ pytest-cov found, running with coverage"
-            PYTHONPATH=src pytest -q --disable-warnings --maxfail=1 \
-              --cov=src --cov-report=term-missing --cov-fail-under=70 || true
-          else
-            echo "⚠️ pytest-cov not installed, running basic tests"
-            PYTHONPATH=src pytest -q --disable-warnings --maxfail=1 || true
-          fi
-
-          echo "🧠 Running mypy type checks..."
+          echo "🧠 Running mypy..."
           mypy --install-types --non-interactive src || true
 
-      # 5️⃣ Развёртывание на сервер
+          echo "🧩 Running tests..."
+          PYTHONPATH=src pytest -q --disable-warnings --maxfail=1 \
+            --cov=src --cov-report=term-missing --cov-fail-under=70 || true
+
+      # 6️⃣ Деплой на прод
       - name: 🚀 Deploy to production
         uses: appleboy/ssh-action@v1.1.0
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
-          port: 22
           script_stop: true
           script: |
-            echo "🔐 Connected to $HOST"
             APP_DIR="/home/denis/bots/ozon_fbo_auto_supply_advisor"
-
             echo "📁 Deploying to $APP_DIR"
             mkdir -p $APP_DIR
             cd $APP_DIR
 
             if [ ! -d ".git" ]; then
-              echo "📦 Initializing repository..."
               git clone https://github.com/DArkadich/ozon_fbo_auto_supply_advisor.git .
+            else
+              git fetch --all
+              git reset --hard origin/main
             fi
-
-            echo "📥 Updating code..."
-            git fetch --all
-            git reset --hard origin/main
 
             echo "🐳 Rebuilding containers..."
             docker compose -f docker-compose.yml pull || true
             docker compose -f docker-compose.yml up -d --build
-
-            echo "🧹 Cleaning old Docker images..."
             docker image prune -af || true
 
-            echo "✅ Deployment finished successfully!"
+            echo "✅ Deployment complete!"
 
-      # 6️⃣ Уведомления
+      # 7️⃣ Уведомления
       - name: ✅ Notify success
         if: success()
-        run: echo "✅ Deployed successfully to production!"
+        run: echo "✅ Successfully deployed to production!"
 
       - name: ⚠️ Notify failure
         if: failure()
-        run: echo "❌ Deployment failed — check GitHub Actions logs."
+        run: echo "❌ Deployment failed — check logs."
